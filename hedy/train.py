@@ -7,7 +7,7 @@ import torch
 
 from .data import download_shakespeare, get_batch, split
 from .model import GPT, GPTConfig
-from .tokenizer import CharTokenizer
+from .tokenizer import BPETokenizer, CharTokenizer
 
 
 def lr_at(step, steps, lr, warmup=100, min_ratio=0.1):
@@ -29,6 +29,8 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument("--data", default=None)
     p.add_argument("--out", default="checkpoints")
+    p.add_argument("--tokenizer", choices=["char", "bpe"], default="char")
+    p.add_argument("--vocab_size", type=int, default=512, help="BPE only")
     p.add_argument("--steps", type=int, default=2000)
     p.add_argument("--batch_size", type=int, default=32)
     p.add_argument("--block_size", type=int, default=128)
@@ -45,9 +47,18 @@ def main():
     device = "cuda" if torch.cuda.is_available() else "cpu"
     path = args.data or download_shakespeare()
     text = open(path, encoding="utf-8").read()
-    tok = CharTokenizer.from_text(text)
+    if args.tokenizer == "bpe":
+        tok = BPETokenizer.train(text, args.vocab_size)
+    else:
+        tok = CharTokenizer.from_text(text)
     ids = torch.tensor(tok.encode(text), dtype=torch.long)
     train, val = split(ids)
+    # Bits-per-byte makes runs with different tokenizers comparable: loss is per *token*,
+    # and a BPE token covers more text than a char token. bpb = loss * tokens / bytes / ln 2.
+    val_bytes = len(tok.decode(val.tolist()).encode("utf-8"))
+    bpb_scale = len(val) / val_bytes / math.log(2)
+    print(f"tokenizer={args.tokenizer} vocab={tok.vocab_size} tokens={len(ids)} "
+          f"bytes/token={len(text.encode()) / len(ids):.2f}")
 
     cfg = GPTConfig(tok.vocab_size, args.block_size, args.n_layer, args.n_head, args.n_embd, args.dropout)
     model = GPT(cfg).to(device)
@@ -60,8 +71,9 @@ def main():
         for g in opt.param_groups:
             g["lr"] = lr_at(step, args.steps, args.lr)
         if step % args.eval_every == 0:
+            vl = estimate_loss(model, val, args, device)
             print(f"step {step}: train {estimate_loss(model, train, args, device):.3f} "
-                  f"val {estimate_loss(model, val, args, device):.3f}")
+                  f"val {vl:.3f} val_bpb {vl * bpb_scale:.3f}")
         _, loss = model(*get_batch(train, args.batch_size, args.block_size, device))
         opt.zero_grad(set_to_none=True)
         loss.backward()

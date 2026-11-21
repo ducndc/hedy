@@ -13,6 +13,7 @@ pytest
 ## Run
 ```bash
 python -m hedy.train --steps 2000          # downloads Tiny Shakespeare, trains, saves checkpoints/
+python -m hedy.train --tokenizer bpe --vocab_size 512   # byte-level BPE instead of chars
 python -m hedy.sample --prompt "ROMEO:"
 ```
 
