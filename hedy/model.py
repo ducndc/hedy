@@ -14,6 +14,39 @@ class GPTConfig:
     n_head: int = 6
     n_embd: int = 384
     dropout: float = 0.1
+    pos: str = "learned"    # "learned" (GPT-2) | "rope"
+    norm: str = "layernorm"  # "layernorm" | "rmsnorm"
+    mlp: str = "gelu"        # "gelu" | "swiglu"
+
+
+class RMSNorm(nn.Module):
+    """x / rms(x) * g. LayerNorm without mean-centering and without bias."""
+
+    def __init__(self, dim: int, eps: float = 1e-6):
+        super().__init__()
+        self.eps = eps
+        self.weight = nn.Parameter(torch.ones(dim))
+
+    def forward(self, x):
+        return x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.eps) * self.weight
+
+
+def make_norm(cfg: GPTConfig):
+    return RMSNorm(cfg.n_embd) if cfg.norm == "rmsnorm" else nn.LayerNorm(cfg.n_embd)
+
+
+def rope_cache(T: int, head_dim: int, device, base: float = 10000.0):
+    """cos/sin tables of shape (T, head_dim/2): angle[t, i] = t * base^(-2i/head_dim)."""
+    inv_freq = base ** (-torch.arange(0, head_dim, 2, device=device).float() / head_dim)
+    ang = torch.outer(torch.arange(T, device=device).float(), inv_freq)
+    return ang.cos(), ang.sin()
+
+
+def apply_rope(x, cos, sin):
+    """x: (B, heads, T, d). Rotate each consecutive (even, odd) channel pair by its position angle."""
+    x1, x2 = x[..., 0::2], x[..., 1::2]
+    out = torch.stack((x1 * cos - x2 * sin, x1 * sin + x2 * cos), dim=-1)
+    return out.flatten(-2)
 
 
 class CausalSelfAttention(nn.Module):
@@ -24,11 +57,16 @@ class CausalSelfAttention(nn.Module):
         self.qkv = nn.Linear(cfg.n_embd, 3 * cfg.n_embd, bias=False)
         self.proj = nn.Linear(cfg.n_embd, cfg.n_embd, bias=False)
         self.dropout = cfg.dropout
+        self.rope = cfg.pos == "rope"
+        assert not self.rope or (cfg.n_embd // cfg.n_head) % 2 == 0
 
     def forward(self, x):
         B, T, C = x.shape
         q, k, v = self.qkv(x).split(C, dim=2)
         q, k, v = (t.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) for t in (q, k, v))
+        if self.rope:  # position enters here, on q and k only (not v), so scores depend on relative offset
+            cos, sin = rope_cache(T, C // self.n_head, x.device)
+            q, k = apply_rope(q, cos, sin), apply_rope(k, cos, sin)
         y = F.scaled_dot_product_attention(
             q, k, v, is_causal=True, dropout_p=self.dropout if self.training else 0.0
         )
@@ -38,20 +76,28 @@ class CausalSelfAttention(nn.Module):
 class MLP(nn.Module):
     def __init__(self, cfg: GPTConfig):
         super().__init__()
-        self.fc = nn.Linear(cfg.n_embd, 4 * cfg.n_embd, bias=False)
-        self.proj = nn.Linear(4 * cfg.n_embd, cfg.n_embd, bias=False)
+        self.swiglu = cfg.mlp == "swiglu"
+        if self.swiglu:
+            # 3 matrices instead of 2, so shrink hidden to ~(8/3)C to keep parameter count ~equal to 4C GELU
+            h = (int(8 * cfg.n_embd / 3) + 7) // 8 * 8
+            self.gate = nn.Linear(cfg.n_embd, h, bias=False)
+        else:
+            h = 4 * cfg.n_embd
+        self.fc = nn.Linear(cfg.n_embd, h, bias=False)
+        self.proj = nn.Linear(h, cfg.n_embd, bias=False)
         self.drop = nn.Dropout(cfg.dropout)
 
     def forward(self, x):
-        return self.drop(self.proj(F.gelu(self.fc(x))))
+        h = F.silu(self.gate(x)) * self.fc(x) if self.swiglu else F.gelu(self.fc(x))
+        return self.drop(self.proj(h))
 
 
 class Block(nn.Module):
     def __init__(self, cfg: GPTConfig):
         super().__init__()
-        self.ln1 = nn.LayerNorm(cfg.n_embd)
+        self.ln1 = make_norm(cfg)
         self.attn = CausalSelfAttention(cfg)
-        self.ln2 = nn.LayerNorm(cfg.n_embd)
+        self.ln2 = make_norm(cfg)
         self.mlp = MLP(cfg)
 
     def forward(self, x):
@@ -64,10 +110,10 @@ class GPT(nn.Module):
         super().__init__()
         self.cfg = cfg
         self.tok_emb = nn.Embedding(cfg.vocab_size, cfg.n_embd)
-        self.pos_emb = nn.Embedding(cfg.block_size, cfg.n_embd)
+        self.pos_emb = nn.Embedding(cfg.block_size, cfg.n_embd) if cfg.pos == "learned" else None
         self.drop = nn.Dropout(cfg.dropout)
         self.blocks = nn.ModuleList(Block(cfg) for _ in range(cfg.n_layer))
-        self.ln_f = nn.LayerNorm(cfg.n_embd)
+        self.ln_f = make_norm(cfg)
         self.head = nn.Linear(cfg.n_embd, cfg.vocab_size, bias=False)
         self.head.weight = self.tok_emb.weight  # weight tying
         self.apply(self._init)
@@ -83,8 +129,10 @@ class GPT(nn.Module):
     def forward(self, idx, targets=None):
         B, T = idx.shape
         assert T <= self.cfg.block_size
-        pos = torch.arange(T, device=idx.device)
-        x = self.drop(self.tok_emb(idx) + self.pos_emb(pos))
+        x = self.tok_emb(idx)
+        if self.pos_emb is not None:
+            x = x + self.pos_emb(torch.arange(T, device=idx.device))
+        x = self.drop(x)
         for b in self.blocks:
             x = b(x)
         logits = self.head(self.ln_f(x))

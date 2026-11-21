@@ -37,6 +37,10 @@ def main():
     p.add_argument("--n_layer", type=int, default=4)
     p.add_argument("--n_head", type=int, default=4)
     p.add_argument("--n_embd", type=int, default=128)
+    p.add_argument("--pos", choices=["learned", "rope"], default="learned")
+    p.add_argument("--norm", choices=["layernorm", "rmsnorm"], default="layernorm")
+    p.add_argument("--mlp", choices=["gelu", "swiglu"], default="gelu")
+    p.add_argument("--threads", type=int, default=0, help="torch CPU threads (0 = default)")
     p.add_argument("--dropout", type=float, default=0.1)
     p.add_argument("--lr", type=float, default=3e-3)
     p.add_argument("--eval_every", type=int, default=250)
@@ -44,6 +48,8 @@ def main():
     args = p.parse_args()
 
     torch.manual_seed(args.seed)
+    if args.threads:
+        torch.set_num_threads(args.threads)
     device = "cuda" if torch.cuda.is_available() else "cpu"
     path = args.data or download_shakespeare()
     text = open(path, encoding="utf-8").read()
@@ -60,7 +66,8 @@ def main():
     print(f"tokenizer={args.tokenizer} vocab={tok.vocab_size} tokens={len(ids)} "
           f"bytes/token={len(text.encode()) / len(ids):.2f}")
 
-    cfg = GPTConfig(tok.vocab_size, args.block_size, args.n_layer, args.n_head, args.n_embd, args.dropout)
+    cfg = GPTConfig(tok.vocab_size, args.block_size, args.n_layer, args.n_head, args.n_embd, args.dropout,
+                    args.pos, args.norm, args.mlp)
     model = GPT(cfg).to(device)
     print(f"device={device} params={sum(p.numel() for p in model.parameters())/1e6:.2f}M")
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, betas=(0.9, 0.95), weight_decay=0.1)
