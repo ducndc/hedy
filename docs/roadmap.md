@@ -1,0 +1,11 @@
+# Roadmap
+
+1. **Baseline** (done, see [01](01-baseline-gpt.md)): char-level GPT, train on Tiny Shakespeare, sample.
+2. **Tokenizer**: byte-level BPE from scratch; compare loss/bits-per-byte vs char-level.
+3. **Architecture upgrades** (one ablation each): RoPE, RMSNorm, SwiGLU, GQA, KV-cache for generation.
+4. **Training at scale**: bf16/AMP, torch.compile, gradient accumulation, DDP, a real corpus (FineWeb-Edu sample).
+5. **Evaluation**: perplexity, HellaSwag/ARC via lm-evaluation-harness.
+6. **Post-training**: SFT, then DPO / LoRA on an open base model.
+7. **Research**: scaling-law sweeps, optimizer comparisons (AdamW vs Muon), data-quality experiments.
+
+Rule: change one thing at a time, log config + seed + val loss for every run.
