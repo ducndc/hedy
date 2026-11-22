@@ -128,3 +128,20 @@ def test_report_runs_end_to_end_and_recovers_the_synthetic_law(tmp_path, capsys)
     assert "alpha=0.4" in out.replace("alpha=0.40", "alpha=0.4") or "alpha=0.39" in out or "alpha=0.41" in out
     for f in ("scaling_isoflop.png", "scaling_optimum.png", "scaling_extrapolation.png"):
         assert (tmp_path / "figs" / f).stat().st_size > 5_000
+
+
+def test_loss_command_reports_error_against_a_stored_prediction(tmp_path, capsys, monkeypatch):
+    import sys
+    from hedy.scaling import main
+    torch.manual_seed(0)
+    m = GPT(make_config(32, 2))
+    torch.save({"config": m.cfg.__dict__, "model": m.state_dict()}, tmp_path / "model.pt")
+    np.random.RandomState(0).randint(0, 1024, 20_000).astype(np.uint16).tofile(tmp_path / "val.bin")
+    (tmp_path / "meta.json").write_text(json.dumps({"val_tokens": 20_000, "val_bytes": 61_000}))
+    (tmp_path / "pred.json").write_text(json.dumps({"predicted_val_loss_fixed_windows": 6.9,
+        "fit_only_95pct_interval_bootstrap": [6.0, 8.0], "with_seed_noise_95pct_interval": [5.5, 8.5]}))
+    monkeypatch.setattr(sys, "argv", ["scaling", "loss", "--ckpt", str(tmp_path), "--data_dir", str(tmp_path),
+                                      "--prediction", str(tmp_path / "pred.json"), "--threads", "1"])
+    main()
+    out = capsys.readouterr().out
+    assert "fixed-window validation loss" in out and "inside the fit-only interval" in out and "True" in out

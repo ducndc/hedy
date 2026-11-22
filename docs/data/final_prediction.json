@@ -1,0 +1,30 @@
+{
+ "made_before_training": "2026-11-22T17:16:02",
+ "model": {
+  "d": 192,
+  "L": 4,
+  "N": 1967808,
+  "heads": 6
+ },
+ "D_tokens": 16939321,
+ "steps": 4136,
+ "C": 200000000000000.0,
+ "predicted_val_loss_fixed_windows": 1.9749,
+ "fit_only_95pct_interval_bootstrap": [
+  1.8948,
+  2.0375
+ ],
+ "with_seed_noise_95pct_interval": [
+  1.8825,
+  2.0674
+ ],
+ "fit_params": {
+  "A": 80.4601,
+  "B": 8772.1791,
+  "E": 1.3632,
+  "alpha": 0.3712,
+  "beta": 0.631
+ },
+ "largest_budget_in_fit": 20000000000000.0,
+ "note": "Prediction written BEFORE the final model was trained. Loss is measured with hedy.scaling.fixed_val_loss (2,400 fixed windows)."
+}

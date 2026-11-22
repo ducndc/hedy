@@ -7,5 +7,6 @@
 5. **Evaluation** (done, see [06](06-evaluation.md)): sliding-window perplexity, n-gram baselines, likelihood MCQ with confidence intervals, generation diagnostics. (Real HellaSwag/ARC need a bigger model; adapter left as an exercise.)
 6. **Post-training**: SFT + LoRA done (see [07](07-post-training-sft-lora.md)); DPO with a verifier done in [08](08-preference-optimization-dpo.md); online verifier-reward RL (GRPO/RLOO) in [09](09-online-rl-grpo.md).
 7. **Research**: scaling-law sweeps (done, see [10](10-scaling-laws.md)); optimizer comparisons (AdamW vs Muon), data-quality experiments next.
+8. **Capstone** (done, see [11](11-capstone-final-model.md)): scaling-law-chosen model, pretrain → SFT → online RL, pre-registered prediction test, honest scorecard.
 
 Rule: change one thing at a time, log config + seed + val loss for every run.

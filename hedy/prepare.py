@@ -48,6 +48,7 @@ def main():
     p.add_argument("--tokenizer", default=None, help="reuse an existing tokenizer.json instead of training one")
     p.add_argument("--train_only", action="store_true", help="write only train.bin (all documents; no held-out split)")
     p.add_argument("--drop_last", action="store_true", help="drop the final document (input was cut mid-story)")
+    p.add_argument("--val_from", default=None, help="with --train_only: copy val.bin and the validation counts from this prepared directory")
     a = p.parse_args()
     assert a.vocab_size <= 65536, "uint16 storage"
 
@@ -62,8 +63,14 @@ def main():
         tok.save(os.path.join(a.out_dir, "tokenizer.json"))
         n_tok, n_bytes = encode_stream(tok, docs, os.path.join(a.out_dir, "train.bin"))
         print(f"{len(docs):,} documents -> {n_tok:,} tokens ({n_bytes / n_tok:.2f} bytes/token), vocab {tok.vocab_size}")
-        json.dump({"vocab_size": tok.vocab_size, "train_tokens": n_tok, "train_bytes": n_bytes},
-                  open(os.path.join(a.out_dir, "meta.json"), "w"))
+        meta = {"vocab_size": tok.vocab_size, "train_tokens": n_tok, "train_bytes": n_bytes}
+        if a.val_from:                                   # reuse an existing held-out set (same tokenizer required)
+            import shutil
+            shutil.copy(os.path.join(a.val_from, "val.bin"), os.path.join(a.out_dir, "val.bin"))
+            src = json.load(open(os.path.join(a.val_from, "meta.json")))
+            assert src["vocab_size"] == tok.vocab_size, "validation set was tokenized with a different vocabulary"
+            meta.update(val_tokens=src["val_tokens"], val_bytes=src["val_bytes"])
+        json.dump(meta, open(os.path.join(a.out_dir, "meta.json"), "w"))
         return
     train_docs, val_docs = split_docs(text, a.val_frac)
     docs = train_docs + val_docs

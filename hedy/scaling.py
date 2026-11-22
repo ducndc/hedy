@@ -170,6 +170,9 @@ def main():
     pl.add_argument("--levels", default="1e12,3e12,1e13,3e13"); pl.add_argument("--min_tokens", type=float, default=4e5)
     pl.add_argument("--max_tokens", type=float, default=6e7); pl.add_argument("--lr_tokens", type=float, default=6e5)
     pl.add_argument("--lr_grid", default="1e-3,3e-3,1e-2,3e-2"); pl.add_argument("--lr_dims", default="64,128,256")
+    ls = sub.add_parser("loss", help="fixed-window validation loss of a trained checkpoint, vs a stored prediction")
+    ls.add_argument("--ckpt", required=True); ls.add_argument("--data_dir", default="data/tinystories-big")
+    ls.add_argument("--prediction", default=None); ls.add_argument("--threads", type=int, default=4)
     f = sub.add_parser("fit")
     f.add_argument("--runs", required=True); f.add_argument("--lr_runs", default=None)
     f.add_argument("--figs", default=None); f.add_argument("--boot", type=int, default=100)
@@ -182,6 +185,22 @@ def main():
             f_.write(json.dumps(res) + "\n")
         print(f"d={a.d} L={a.L} N={res['N']:,} D={res['D']:,} lr={a.lr}: val {res['val_loss']:.4f} "
               f"train {res['train_loss']:.4f} ({res['seconds']:.0f}s, {res['tok_per_s']:,.0f} tok/s)")
+    elif a.cmd == "loss":
+        torch.set_num_threads(a.threads)
+        ck = torch.load(os.path.join(a.ckpt, "model.pt"), map_location="cpu")
+        model = GPT(GPTConfig(**ck["config"])); model.load_state_dict(ck["model"])
+        val = np.asarray(load_bin(os.path.join(a.data_dir, "val.bin")))
+        loss = fixed_val_loss(model, val)
+        meta = json.load(open(os.path.join(a.data_dir, "meta.json")))
+        bpb = loss * meta["val_tokens"] / meta["val_bytes"] / math.log(2)
+        print(f"fixed-window validation loss {loss:.4f} nats/token = {bpb:.3f} bits/byte "
+              f"({sum(p.numel() for p in model.parameters()):,} parameters)")
+        if a.prediction:
+            pr = json.load(open(a.prediction))
+            lo, hi = pr["with_seed_noise_95pct_interval"]; fo = pr["fit_only_95pct_interval_bootstrap"]
+            print(f"pre-registered prediction {pr['predicted_val_loss_fixed_windows']:.4f}; error {loss - pr['predicted_val_loss_fixed_windows']:+.4f} "
+                  f"({100 * (loss - pr['predicted_val_loss_fixed_windows']) / loss:+.2f}%); inside the fit-only interval {fo}: {fo[0] <= loss <= fo[1]}; "
+                  f"inside the interval with seed noise [{lo}, {hi}]: {lo <= loss <= hi}")
     elif a.cmd == "fit":
         report(a)
     elif a.cmd == "plan":

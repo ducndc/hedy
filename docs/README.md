@@ -14,5 +14,6 @@ One note per step, written to be read in order. Each note has: **goal → theory
 | 08 | [Preference optimization: DPO with a verifier](08-preference-optimization-dpo.md) | `hedy/dpo.py`, `tests/test_dpo.py` |
 | 09 | [Online RL with a verifiable reward (GRPO/RLOO)](09-online-rl-grpo.md) | `hedy/rl.py`, `tests/test_rl.py` |
 | 10 | [Scaling laws](10-scaling-laws.md) | `hedy/scaling.py`, `hedy/scalefit.py`, `hedy/scaleplots.py`, `tests/test_scaling.py`, `docs/data/`, `docs/figures/` |
+| 11 | [Capstone: the final model and an honest scorecard](11-capstone-final-model.md) | `hedy/scaling.py loss`, `hedy/prepare.py --val_from`, `docs/data/final_*` |
 
 Plan: [roadmap.md](roadmap.md)

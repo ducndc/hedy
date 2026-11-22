@@ -1,0 +1,54 @@
+data_dir=data/tinystories-big vocab=1024 train_tokens=67,409,325 val_tokens=312,347
+device=cpu params=1.97M dtype=float32 compile=True batch=32x1 tokens/step=4,096
+step 0: train 6.959 val 6.958 val_bpb 3.271
+  step 100: loss 3.942 lr 1.20e-03 gnorm 0.71 5,753 tok/s
+  step 200: loss 3.238 lr 1.20e-03 gnorm 0.80 6,824 tok/s
+  step 300: loss 2.933 lr 1.19e-03 gnorm 0.89 7,056 tok/s
+  step 400: loss 2.794 lr 1.19e-03 gnorm 0.95 7,299 tok/s
+  step 500: loss 2.761 lr 1.17e-03 gnorm 0.89 7,311 tok/s
+step 500: train 2.612 val 2.719 val_bpb 1.278
+  step 600: loss 2.585 lr 1.16e-03 gnorm 0.88 6,524 tok/s
+  step 700: loss 2.471 lr 1.14e-03 gnorm 0.86 7,575 tok/s
+  step 800: loss 2.357 lr 1.12e-03 gnorm 0.84 7,579 tok/s
+  step 900: loss 2.317 lr 1.10e-03 gnorm 0.84 7,573 tok/s
+  step 1000: loss 2.339 lr 1.07e-03 gnorm 0.83 7,560 tok/s
+step 1000: train 2.363 val 2.445 val_bpb 1.149
+  step 1100: loss 2.360 lr 1.04e-03 gnorm 0.84 6,474 tok/s
+  step 1200: loss 2.324 lr 1.01e-03 gnorm 0.81 6,995 tok/s
+  step 1300: loss 2.213 lr 9.81e-04 gnorm 0.81 7,076 tok/s
+  step 1400: loss 2.331 lr 9.47e-04 gnorm 0.83 6,894 tok/s
+  step 1500: loss 2.222 lr 9.10e-04 gnorm 0.79 6,999 tok/s
+step 1500: train 2.203 val 2.316 val_bpb 1.089
+  step 1600: loss 2.238 lr 8.72e-04 gnorm 0.80 6,482 tok/s
+  step 1700: loss 2.152 lr 8.33e-04 gnorm 0.78 7,314 tok/s
+  step 1800: loss 2.160 lr 7.93e-04 gnorm 0.81 7,404 tok/s
+  step 1900: loss 2.276 lr 7.52e-04 gnorm 0.84 7,480 tok/s
+  step 2000: loss 2.107 lr 7.10e-04 gnorm 0.81 7,571 tok/s
+step 2000: train 2.100 val 2.212 val_bpb 1.040
+  step 2100: loss 2.171 lr 6.68e-04 gnorm 0.83 6,759 tok/s
+  step 2200: loss 2.151 lr 6.26e-04 gnorm 0.82 7,572 tok/s
+  step 2300: loss 2.117 lr 5.84e-04 gnorm 0.83 7,569 tok/s
+  step 2400: loss 2.086 lr 5.43e-04 gnorm 0.82 7,556 tok/s
+  step 2500: loss 2.114 lr 5.02e-04 gnorm 0.85 7,558 tok/s
+step 2500: train 2.061 val 2.146 val_bpb 1.009
+  step 2600: loss 2.018 lr 4.63e-04 gnorm 0.84 6,706 tok/s
+  step 2700: loss 1.991 lr 4.24e-04 gnorm 0.83 7,125 tok/s
+  step 2800: loss 2.155 lr 3.87e-04 gnorm 0.87 6,858 tok/s
+  step 2900: loss 2.049 lr 3.52e-04 gnorm 0.81 7,182 tok/s
+  step 3000: loss 1.977 lr 3.18e-04 gnorm 0.84 6,704 tok/s
+step 3000: train 1.972 val 2.059 val_bpb 0.968
+  step 3100: loss 1.855 lr 2.87e-04 gnorm 0.83 6,090 tok/s
+  step 3200: loss 2.030 lr 2.57e-04 gnorm 0.85 6,883 tok/s
+  step 3300: loss 1.838 lr 2.31e-04 gnorm 0.83 6,627 tok/s
+  step 3400: loss 1.858 lr 2.06e-04 gnorm 0.82 6,450 tok/s
+  step 3500: loss 1.887 lr 1.85e-04 gnorm 0.85 6,667 tok/s
+step 3500: train 1.940 val 2.042 val_bpb 0.960
+  step 3600: loss 2.005 lr 1.66e-04 gnorm 0.88 5,905 tok/s
+  step 3700: loss 1.963 lr 1.51e-04 gnorm 0.91 7,512 tok/s
+  step 3800: loss 1.889 lr 1.38e-04 gnorm 0.86 7,607 tok/s
+  step 3900: loss 1.807 lr 1.29e-04 gnorm 0.87 7,541 tok/s
+  step 4000: loss 1.850 lr 1.23e-04 gnorm 0.84 7,396 tok/s
+step 4000: train 1.912 val 1.992 val_bpb 0.936
+  step 4100: loss 1.958 lr 1.20e-04 gnorm 0.89 6,713 tok/s
+final: val 1.996 val_bpb 0.938
+saved checkpoints/final-pretrain

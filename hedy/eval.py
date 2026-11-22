@@ -222,6 +222,7 @@ def main():
     p.add_argument("--n_items", type=int, default=500)
     p.add_argument("--max_tokens", type=int, default=0, help="limit validation tokens (0 = all)")
     p.add_argument("--threads", type=int, default=0)
+    p.add_argument("--strides", default="", help="comma list of sliding-window strides (default: window, window/2, window/8)")
     a = p.parse_args()
     if a.threads:
         torch.set_num_threads(a.threads)
@@ -237,12 +238,16 @@ def main():
 
     print("\n== 1. perplexity (val) ==")
     print(f"{'method':<28} {'loss':>6} {'ppl':>7} {'bits/byte':>10} {'tokens scored':>14}")
-    for name, stride in (("chunked (stride=window)", W), (f"sliding stride={W // 2}", W // 2), (f"sliding stride={W // 8}", W // 8)):
+    strides = [int(x) for x in a.strides.split(",")] if a.strides else [W, W // 2, W // 8]
+    chunk_pos = None
+    for stride in strides:
+        name = "chunked (stride=window)" if stride == W else f"sliding stride={stride}"
         r, nll, pos = ppl_report(model, tok, val, W, stride)
         print(f"{name:<28} {r['loss']:>6.3f} {r['ppl']:>7.2f} {r['bpb']:>10.3f} {r['n']:>14,}")
         if stride == W:
             chunk_pos = np.array([nll[pos == j].mean() for j in range(W)])
-    print("loss by position inside a chunk (nats):  " + "  ".join(f"pos{j}:{chunk_pos[j]:.2f}" for j in (0, 1, 3, 7, 15, 31, 63, W - 1)))
+    if chunk_pos is not None:
+        print("loss by position inside a chunk (nats):  " + "  ".join(f"pos{j}:{chunk_pos[j]:.2f}" for j in (0, 1, 3, 7, 15, 31, 63, W - 1)))
 
     print("\n== 2. baselines (val bits/byte) ==")
     print(f"{'uniform over tokens':<28} {math.log(V) / (nb[val[1:]].mean() * LN2):>10.3f}")
