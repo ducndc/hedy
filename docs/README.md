@@ -11,5 +11,6 @@ One note per step, written to be read in order. Each note has: **goal → theory
 | 05 | [Training at scale](05-training-at-scale.md) | `hedy/train.py`, `hedy/prepare.py`, `hedy/data.py`, `tests/test_train.py` |
 | 06 | [Evaluation](06-evaluation.md) | `hedy/eval.py`, `tests/test_eval.py` |
 | 07 | [Post-training: SFT and LoRA](07-post-training-sft-lora.md) | `hedy/sft.py`, `hedy/lora.py`, `tests/test_sft.py`, `tests/test_lora.py` |
+| 08 | [Preference optimization: DPO with a verifier](08-preference-optimization-dpo.md) | `hedy/dpo.py`, `tests/test_dpo.py` |
 
 Plan: [roadmap.md](roadmap.md)

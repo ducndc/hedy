@@ -23,6 +23,10 @@ python -m hedy.train --data_dir data/tinystories --resume    # continue from che
 python -m hedy.eval --ckpt checkpoints --data_dir data/tinystories --text data/tinystories-valid.txt   # perplexity, baselines, MCQ, diversity
 python -m hedy.sft build --text data/tinystories-valid.txt --out data/sft          # synthetic verifiable instructions
 python -m hedy.sft run --base checkpoints/tinystories --data data/sft --data_dir data/tinystories --mode lora --rank 8 --lr 3e-3 --out checkpoints/sft-lora8
+python -m hedy.dpo prompts --text data/tinystories-valid.txt --out data/dpo           # preference learning: eval prompts,
+python -m hedy.dpo sample --policy checkpoints/sft-full --data data/sft --out data/dpo  # sample K responses/prompt,
+python -m hedy.dpo pairs --out data/dpo                                               # verifier -> pairs,
+python -m hedy.dpo train --policy checkpoints/sft-full --pairs data/dpo/pairs.jsonl --beta 0.3 --lr 2e-5 --out checkpoints/dpo
 python -m hedy.sample --prompt "ROMEO:"
 ```
 
