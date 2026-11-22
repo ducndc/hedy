@@ -129,4 +129,6 @@ class BPETokenizer:
 def load_tokenizer(path: str):
     with open(path) as f:
         d = json.load(f)
+    if isinstance(d, list):          # legacy step-01 format: a bare list of characters
+        return CharTokenizer(d)
     return {"char": CharTokenizer, "bpe": BPETokenizer}[d["type"]]._from_dict(d)

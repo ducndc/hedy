@@ -38,3 +38,14 @@ def test_generate_and_tokenizer():
     assert out.shape == (1, 11)
     t = CharTokenizer.from_text("hello")
     assert t.decode(t.encode("hello")) == "hello"
+
+
+def test_step01_checkpoint_config_still_loads_into_the_current_model():
+    """A step-01 checkpoint's config has only six fields; later options (pos, norm, mlp, n_kv_head) must default
+    to the original architecture so the old weights load and give identical outputs."""
+    torch.manual_seed(0)
+    old_cfg = {"vocab_size": 20, "block_size": 16, "n_layer": 2, "n_head": 2, "n_embd": 32, "dropout": 0.0}
+    a = GPT(GPTConfig(**old_cfg)).eval()
+    b = GPT(GPTConfig(**old_cfg)); b.load_state_dict(a.state_dict()); b.eval()
+    x = torch.randint(0, 20, (2, 16))
+    assert torch.equal(a(x)[0], b(x)[0]) and a.cfg.pos == "learned" and a.cfg.mlp == "gelu" and a.cfg.n_kv_head == 0
