@@ -15,13 +15,14 @@ def main():
     p.add_argument("--tokens", type=int, default=300)
     p.add_argument("--temperature", type=float, default=0.8)
     p.add_argument("--top_k", type=int, default=40)
+    p.add_argument("--no_cache", action="store_true", help="disable the KV-cache (slower, same output)")
     a = p.parse_args()
     tok = load_tokenizer(os.path.join(a.ckpt, "tokenizer.json"))
     ck = torch.load(os.path.join(a.ckpt, "model.pt"), map_location="cpu")
     model = GPT(GPTConfig(**ck["config"]))
     model.load_state_dict(ck["model"])
     idx = torch.tensor([tok.encode(a.prompt)])
-    print(tok.decode(model.generate(idx, a.tokens, a.temperature, a.top_k)[0].tolist()))
+    print(tok.decode(model.generate(idx, a.tokens, a.temperature, a.top_k, use_cache=not a.no_cache)[0].tolist()))
 
 
 if __name__ == "__main__":

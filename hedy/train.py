@@ -40,6 +40,7 @@ def main():
     p.add_argument("--pos", choices=["learned", "rope"], default="learned")
     p.add_argument("--norm", choices=["layernorm", "rmsnorm"], default="layernorm")
     p.add_argument("--mlp", choices=["gelu", "swiglu"], default="gelu")
+    p.add_argument("--n_kv_head", type=int, default=0, help="0=MHA, 1=MQA, else GQA (must divide n_head)")
     p.add_argument("--threads", type=int, default=0, help="torch CPU threads (0 = default)")
     p.add_argument("--dropout", type=float, default=0.1)
     p.add_argument("--lr", type=float, default=3e-3)
@@ -67,7 +68,7 @@ def main():
           f"bytes/token={len(text.encode()) / len(ids):.2f}")
 
     cfg = GPTConfig(tok.vocab_size, args.block_size, args.n_layer, args.n_head, args.n_embd, args.dropout,
-                    args.pos, args.norm, args.mlp)
+                    args.pos, args.norm, args.mlp, args.n_kv_head)
     model = GPT(cfg).to(device)
     print(f"device={device} params={sum(p.numel() for p in model.parameters())/1e6:.2f}M")
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, betas=(0.9, 0.95), weight_decay=0.1)

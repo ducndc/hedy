@@ -15,6 +15,8 @@ pytest
 python -m hedy.train --steps 2000          # downloads Tiny Shakespeare, trains, saves checkpoints/
 python -m hedy.train --tokenizer bpe --vocab_size 512   # byte-level BPE instead of chars
 python -m hedy.train --pos rope --norm rmsnorm --mlp swiglu   # LLaMA-style block
+python -m hedy.train --pos rope --norm rmsnorm --mlp swiglu --n_kv_head 2   # GQA
+python -m hedy.bench                       # KV-cache speed-up and cache memory
 python -m hedy.sample --prompt "ROMEO:"
 ```
 

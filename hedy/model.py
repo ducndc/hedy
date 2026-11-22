@@ -17,6 +17,7 @@ class GPTConfig:
     pos: str = "learned"    # "learned" (GPT-2) | "rope"
     norm: str = "layernorm"  # "layernorm" | "rmsnorm"
     mlp: str = "gelu"        # "gelu" | "swiglu"
+    n_kv_head: int = 0       # 0 = same as n_head (MHA); 1 = MQA; in between = GQA
 
 
 class RMSNorm(nn.Module):
@@ -35,10 +36,11 @@ def make_norm(cfg: GPTConfig):
     return RMSNorm(cfg.n_embd) if cfg.norm == "rmsnorm" else nn.LayerNorm(cfg.n_embd)
 
 
-def rope_cache(T: int, head_dim: int, device, base: float = 10000.0):
-    """cos/sin tables of shape (T, head_dim/2): angle[t, i] = t * base^(-2i/head_dim)."""
+def rope_cache(T: int, head_dim: int, device, base: float = 10000.0, offset: int = 0):
+    """cos/sin tables of shape (T, head_dim/2): angle[t, i] = (offset+t) * base^(-2i/head_dim).
+    `offset` = number of tokens already processed (non-zero when decoding with a KV-cache)."""
     inv_freq = base ** (-torch.arange(0, head_dim, 2, device=device).float() / head_dim)
-    ang = torch.outer(torch.arange(T, device=device).float(), inv_freq)
+    ang = torch.outer(torch.arange(offset, offset + T, device=device).float(), inv_freq)
     return ang.cos(), ang.sin()
 
 
@@ -49,27 +51,66 @@ def apply_rope(x, cos, sin):
     return out.flatten(-2)
 
 
+class KVCache:
+    """Per-layer cache of past keys/values, each (B, n_kv_head, T_past, head_dim).
+    Simple version: grows by torch.cat each step (copies O(T) per token; a production cache
+    preallocates a (B, H, max_len, d) buffer and writes in place)."""
+
+    def __init__(self, n_layer: int):
+        self.k: list = [None] * n_layer
+        self.v: list = [None] * n_layer
+
+    @property
+    def seq_len(self) -> int:
+        return 0 if self.k[0] is None else self.k[0].size(2)
+
+    def update(self, layer: int, k, v):
+        if self.k[layer] is not None:
+            k, v = torch.cat([self.k[layer], k], dim=2), torch.cat([self.v[layer], v], dim=2)
+        self.k[layer], self.v[layer] = k, v
+        return k, v
+
+    def nbytes(self) -> int:
+        return sum(t.numel() * t.element_size() for t in self.k + self.v if t is not None)
+
+
 class CausalSelfAttention(nn.Module):
     def __init__(self, cfg: GPTConfig):
         super().__init__()
         assert cfg.n_embd % cfg.n_head == 0
         self.n_head = cfg.n_head
-        self.qkv = nn.Linear(cfg.n_embd, 3 * cfg.n_embd, bias=False)
+        self.n_kv_head = cfg.n_kv_head or cfg.n_head
+        assert self.n_head % self.n_kv_head == 0, "n_head must be a multiple of n_kv_head"
+        self.head_dim = cfg.n_embd // cfg.n_head
+        # one fused projection: [ q: n_head*d | k: n_kv_head*d | v: n_kv_head*d ]
+        self.qkv = nn.Linear(cfg.n_embd, (self.n_head + 2 * self.n_kv_head) * self.head_dim, bias=False)
         self.proj = nn.Linear(cfg.n_embd, cfg.n_embd, bias=False)
         self.dropout = cfg.dropout
         self.rope = cfg.pos == "rope"
-        assert not self.rope or (cfg.n_embd // cfg.n_head) % 2 == 0
+        assert not self.rope or self.head_dim % 2 == 0
 
-    def forward(self, x):
+    def forward(self, x, cache: "KVCache | None" = None, layer: int = 0, offset: int = 0):
         B, T, C = x.shape
-        q, k, v = self.qkv(x).split(C, dim=2)
-        q, k, v = (t.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) for t in (q, k, v))
-        if self.rope:  # position enters here, on q and k only (not v), so scores depend on relative offset
-            cos, sin = rope_cache(T, C // self.n_head, x.device)
+        d, H, Hk = self.head_dim, self.n_head, self.n_kv_head
+        q, k, v = self.qkv(x).split([H * d, Hk * d, Hk * d], dim=2)
+        q = q.view(B, T, H, d).transpose(1, 2)
+        k = k.view(B, T, Hk, d).transpose(1, 2)
+        v = v.view(B, T, Hk, d).transpose(1, 2)
+        if self.rope:  # rotate q and k at their absolute positions offset..offset+T
+            cos, sin = rope_cache(T, d, x.device, offset=offset)
             q, k = apply_rope(q, cos, sin), apply_rope(k, cos, sin)
-        y = F.scaled_dot_product_attention(
-            q, k, v, is_causal=True, dropout_p=self.dropout if self.training else 0.0
-        )
+        if cache is not None:
+            k, v = cache.update(layer, k, v)  # cache stores only Hk heads (the GQA saving)
+        if Hk != H:  # share each kv head among H/Hk query heads
+            k, v = k.repeat_interleave(H // Hk, dim=1), v.repeat_interleave(H // Hk, dim=1)
+        drop = self.dropout if self.training else 0.0
+        if offset == 0:
+            y = F.scaled_dot_product_attention(q, k, v, is_causal=True, dropout_p=drop)
+        elif T == 1:  # decoding one token: it may see everything before it, no mask needed
+            y = F.scaled_dot_product_attention(q, k, v, dropout_p=drop)
+        else:  # chunk after a non-empty cache: query i (global pos offset+i) sees keys <= offset+i
+            mask = torch.ones(T, offset + T, dtype=torch.bool, device=x.device).tril(diagonal=offset)
+            y = F.scaled_dot_product_attention(q, k, v, attn_mask=mask, dropout_p=drop)
         return self.proj(y.transpose(1, 2).contiguous().view(B, T, C))
 
 
@@ -100,8 +141,8 @@ class Block(nn.Module):
         self.ln2 = make_norm(cfg)
         self.mlp = MLP(cfg)
 
-    def forward(self, x):
-        x = x + self.attn(self.ln1(x))
+    def forward(self, x, cache=None, layer=0, offset=0):
+        x = x + self.attn(self.ln1(x), cache, layer, offset)
         return x + self.mlp(self.ln2(x))
 
 
@@ -126,30 +167,48 @@ class GPT(nn.Module):
         if isinstance(m, (nn.Linear, nn.Embedding)):
             nn.init.normal_(m.weight, 0.0, 0.02)
 
-    def forward(self, idx, targets=None):
+    def forward(self, idx, targets=None, cache: "KVCache | None" = None):
         B, T = idx.shape
-        assert T <= self.cfg.block_size
+        offset = cache.seq_len if cache is not None else 0  # tokens already in the cache
+        assert offset + T <= self.cfg.block_size
         x = self.tok_emb(idx)
         if self.pos_emb is not None:
-            x = x + self.pos_emb(torch.arange(T, device=idx.device))
+            x = x + self.pos_emb(torch.arange(offset, offset + T, device=idx.device))
         x = self.drop(x)
-        for b in self.blocks:
-            x = b(x)
+        for i, b in enumerate(self.blocks):
+            x = b(x, cache, i, offset)
         logits = self.head(self.ln_f(x))
         loss = None
         if targets is not None:
             loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1))
         return logits, loss
 
+    def new_cache(self) -> KVCache:
+        return KVCache(self.cfg.n_layer)
+
+    @staticmethod
+    def _sample(logits, temperature, top_k):
+        logits = logits[:, -1, :] / max(temperature, 1e-8)
+        if top_k is not None:
+            v, _ = torch.topk(logits, min(top_k, logits.size(-1)))
+            logits[logits < v[:, [-1]]] = -float("inf")
+        return torch.multinomial(F.softmax(logits, dim=-1), 1)
+
     @torch.no_grad()
-    def generate(self, idx, max_new_tokens, temperature=1.0, top_k=None):
+    def generate(self, idx, max_new_tokens, temperature=1.0, top_k=None, use_cache=True):
+        """Autoregressive sampling.
+        With use_cache: prefill the prompt once, then feed ONE new token per step (O(T) per step).
+        Without: re-run the whole window every step (O(T^2) per step). Once the sequence reaches
+        block_size we fall back to the sliding-window recompute, because cached keys/values were
+        computed with a different (now dropped) left context and positions can't go past block_size."""
         self.eval()
+        cache = self.new_cache() if use_cache else None
         for _ in range(max_new_tokens):
-            logits, _ = self(idx[:, -self.cfg.block_size:])
-            logits = logits[:, -1, :] / max(temperature, 1e-8)
-            if top_k is not None:
-                v, _ = torch.topk(logits, min(top_k, logits.size(-1)))
-                logits[logits < v[:, [-1]]] = -float("inf")
-            nxt = torch.multinomial(F.softmax(logits, dim=-1), 1)
-            idx = torch.cat([idx, nxt], dim=1)
+            if cache is not None and idx.size(1) < self.cfg.block_size:
+                inp = idx[:, cache.seq_len:]            # prompt on the first step, then 1 new token
+                logits, _ = self(inp, cache=cache)
+            else:
+                cache = None
+                logits, _ = self(idx[:, -self.cfg.block_size:])
+            idx = torch.cat([idx, self._sample(logits, temperature, top_k)], dim=1)
         return idx
