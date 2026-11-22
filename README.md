@@ -27,6 +27,7 @@ python -m hedy.dpo prompts --text data/tinystories-valid.txt --out data/dpo     
 python -m hedy.dpo sample --policy checkpoints/sft-full --data data/sft --out data/dpo  # sample K responses/prompt,
 python -m hedy.dpo pairs --out data/dpo                                               # verifier -> pairs,
 python -m hedy.dpo train --policy checkpoints/sft-full --pairs data/dpo/pairs.jsonl --beta 0.3 --lr 2e-5 --out checkpoints/dpo
+python -m hedy.rl --policy checkpoints/sft-full --kinds name --steps 50 --lr 2e-5 --out checkpoints/rl-name   # online RL (GRPO)
 python -m hedy.sample --prompt "ROMEO:"
 ```
 
