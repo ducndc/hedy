@@ -11,7 +11,7 @@ import os
 
 import numpy as np
 
-from .tokenizer import BPETokenizer
+from .tokenizer import BPETokenizer, load_tokenizer
 
 EOT = "<|endoftext|>"
 
@@ -24,6 +24,20 @@ def split_docs(text: str, val_frac: float = 0.05):
     return docs[:-n_val], docs[-n_val:]
 
 
+def encode_stream(tok, docs, path, chunk_docs=4000):
+    """Tokenize documents in chunks and append uint16 ids to `path` (flat file). Never holds the whole
+    corpus in memory: needed once the corpus has tens of millions of tokens (a Python list of ints costs
+    ~36 bytes per token). Returns (n_tokens, n_bytes)."""
+    n_tok = n_bytes = 0
+    with open(path, "wb") as f:
+        for i in range(0, len(docs), chunk_docs):
+            joined = "\n\n".join(docs[i : i + chunk_docs]) + "\n\n"
+            ids = np.array(tok.encode(joined), dtype=np.uint16)
+            ids.tofile(f)
+            n_tok += len(ids); n_bytes += len(joined.encode("utf-8"))
+    return n_tok, n_bytes
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--input", required=True)
@@ -31,11 +45,26 @@ def main():
     p.add_argument("--vocab_size", type=int, default=1024)
     p.add_argument("--tok_chars", type=int, default=3_000_000, help="chars used to learn BPE merges")
     p.add_argument("--val_frac", type=float, default=0.05)
+    p.add_argument("--tokenizer", default=None, help="reuse an existing tokenizer.json instead of training one")
+    p.add_argument("--train_only", action="store_true", help="write only train.bin (all documents; no held-out split)")
+    p.add_argument("--drop_last", action="store_true", help="drop the final document (input was cut mid-story)")
     a = p.parse_args()
     assert a.vocab_size <= 65536, "uint16 storage"
 
     text = open(a.input, encoding="utf-8").read()
     # Our BPE has no special tokens yet (see docs/02), so a document boundary becomes a blank line.
+    if a.train_only:
+        docs = [d.strip() for d in text.split(EOT) if d.strip()]
+        if a.drop_last:
+            docs = docs[:-1]
+        tok = load_tokenizer(a.tokenizer) if a.tokenizer else BPETokenizer.train("\n\n".join(docs)[: a.tok_chars], a.vocab_size)
+        os.makedirs(a.out_dir, exist_ok=True)
+        tok.save(os.path.join(a.out_dir, "tokenizer.json"))
+        n_tok, n_bytes = encode_stream(tok, docs, os.path.join(a.out_dir, "train.bin"))
+        print(f"{len(docs):,} documents -> {n_tok:,} tokens ({n_bytes / n_tok:.2f} bytes/token), vocab {tok.vocab_size}")
+        json.dump({"vocab_size": tok.vocab_size, "train_tokens": n_tok, "train_bytes": n_bytes},
+                  open(os.path.join(a.out_dir, "meta.json"), "w"))
+        return
     train_docs, val_docs = split_docs(text, a.val_frac)
     docs = train_docs + val_docs
     print(f"{len(docs)} documents -> {len(train_docs)} train / {len(val_docs)} val")
