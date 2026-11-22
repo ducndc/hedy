@@ -21,6 +21,8 @@ python -m hedy.prepare --input data/tinystories-valid.txt --out_dir data/tinysto
 python -m hedy.train --data_dir data/tinystories --grad_accum 4 --dropout 0 --compile --pos rope --norm rmsnorm --mlp swiglu
 python -m hedy.train --data_dir data/tinystories --resume    # continue from checkpoints/ckpt.pt
 python -m hedy.eval --ckpt checkpoints --data_dir data/tinystories --text data/tinystories-valid.txt   # perplexity, baselines, MCQ, diversity
+python -m hedy.sft build --text data/tinystories-valid.txt --out data/sft          # synthetic verifiable instructions
+python -m hedy.sft run --base checkpoints/tinystories --data data/sft --data_dir data/tinystories --mode lora --rank 8 --lr 3e-3 --out checkpoints/sft-lora8
 python -m hedy.sample --prompt "ROMEO:"
 ```
 

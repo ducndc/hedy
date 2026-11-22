@@ -195,7 +195,7 @@ class GPT(nn.Module):
         return torch.multinomial(F.softmax(logits, dim=-1), 1)
 
     @torch.no_grad()
-    def generate(self, idx, max_new_tokens, temperature=1.0, top_k=None, use_cache=True):
+    def generate(self, idx, max_new_tokens, temperature=1.0, top_k=None, use_cache=True, stop=None):
         """Autoregressive sampling.
         With use_cache: prefill the prompt once, then feed ONE new token per step (O(T) per step).
         Without: re-run the whole window every step (O(T^2) per step). Once the sequence reaches
@@ -211,4 +211,6 @@ class GPT(nn.Module):
                 cache = None
                 logits, _ = self(idx[:, -self.cfg.block_size:])
             idx = torch.cat([idx, self._sample(logits, temperature, top_k)], dim=1)
+            if stop is not None and stop(idx[0].tolist()):   # batch size 1: caller-defined stop rule
+                break
         return idx
