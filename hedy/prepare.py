@@ -16,6 +16,14 @@ from .tokenizer import BPETokenizer
 EOT = "<|endoftext|>"
 
 
+def split_docs(text: str, val_frac: float = 0.05):
+    """(train_docs, val_docs). The tail of the file is validation. Shared with hedy.eval so the
+    benchmark is built from exactly the documents the model never trained on."""
+    docs = [d.strip() for d in text.split(EOT) if d.strip()]
+    n_val = max(1, int(len(docs) * val_frac))
+    return docs[:-n_val], docs[-n_val:]
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--input", required=True)
@@ -28,9 +36,8 @@ def main():
 
     text = open(a.input, encoding="utf-8").read()
     # Our BPE has no special tokens yet (see docs/02), so a document boundary becomes a blank line.
-    docs = [d.strip() for d in text.split(EOT) if d.strip()]
-    n_val = max(1, int(len(docs) * a.val_frac))
-    train_docs, val_docs = docs[:-n_val], docs[-n_val:]
+    train_docs, val_docs = split_docs(text, a.val_frac)
+    docs = train_docs + val_docs
     print(f"{len(docs)} documents -> {len(train_docs)} train / {len(val_docs)} val")
 
     sample = "\n\n".join(train_docs)[: a.tok_chars]

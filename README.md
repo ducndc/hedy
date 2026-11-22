@@ -20,6 +20,7 @@ python -m hedy.bench                       # KV-cache speed-up and cache memory
 python -m hedy.prepare --input data/tinystories-valid.txt --out_dir data/tinystories   # tokenize a corpus once
 python -m hedy.train --data_dir data/tinystories --grad_accum 4 --dropout 0 --compile --pos rope --norm rmsnorm --mlp swiglu
 python -m hedy.train --data_dir data/tinystories --resume    # continue from checkpoints/ckpt.pt
+python -m hedy.eval --ckpt checkpoints --data_dir data/tinystories --text data/tinystories-valid.txt   # perplexity, baselines, MCQ, diversity
 python -m hedy.sample --prompt "ROMEO:"
 ```
 
